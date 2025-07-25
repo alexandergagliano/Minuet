@@ -65,13 +65,3 @@ submit/obsolete
 *.db
 *.sqlite3
 *.parquet
-
-# Images / Outputs
-*.png
-*.jpg
-*.jpeg
-*.gif
-*.tiff
-*.svg
-outputs/
-figures/
