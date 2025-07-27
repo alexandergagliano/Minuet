@@ -1,0 +1,1266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minuet Browser - WebGL UMAP</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+            color: #ffffff;
+            min-height: 100vh;
+            line-height: 1.6;
+            overflow: hidden;
+        }
+
+        .header {
+            text-align: center;
+            padding: 2rem 0 1rem 0;
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            position: relative;
+            overflow: hidden;
+            z-index: 1000;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.02), transparent);
+            animation: shimmer 3s ease-in-out infinite;
+        }
+
+        @keyframes shimmer {
+            0%, 100% { transform: translateX(-100%); }
+            50% { transform: translateX(100%); }
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+            letter-spacing: -1px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header p {
+            font-size: 1rem;
+            opacity: 0.7;
+            font-weight: 400;
+            position: relative;
+            z-index: 1;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 2rem;
+            padding: 1.5rem;
+            background: rgba(255, 255, 255, 0.02);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            position: relative;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            position: relative;
+        }
+
+        .control-group label {
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            color: rgba(255, 255, 255, 0.8);
+            white-space: nowrap;
+        }
+
+        .control-group select, .control-group input {
+            padding: 0.5rem 0.75rem;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            color: #ffffff;
+            font-size: 0.9rem;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .control-group select:focus, .control-group input:focus {
+            outline: none;
+            border-color: rgba(102, 126, 234, 0.5);
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .control-group input[type="range"] {
+            width: 120px;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            outline: none;
+        }
+
+        .control-group input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 2000;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        #webgl-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        .status-overlay {
+            position: fixed;
+            top: 120px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            padding: 1rem;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 0.9rem;
+            z-index: 1000;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 3000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+        }
+
+        .modal-content {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            margin: 5% auto;
+            padding: 0;
+            border-radius: 16px;
+            width: 95%;
+            max-width: 1200px;
+            max-height: 80vh;
+            overflow-y: auto;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            color: #ffffff;
+        }
+
+        .close {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: color 0.3s ease;
+        }
+
+        .close:hover {
+            color: #ffffff;
+        }
+
+        #modal-body {
+            padding: 1.5rem;
+        }
+
+        .galaxy-detail {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+            align-items: start;
+        }
+
+        .galaxy-image-large {
+            width: 350px;
+            height: 350px;
+            object-fit: contain;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .predictions h3 {
+            margin-bottom: 1rem;
+            color: #667eea;
+        }
+
+        .prediction-item {
+            margin-bottom: 1.5rem;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            gap: 1rem;
+            align-items: start;
+        }
+
+        .prediction-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #4CAF50;
+            margin-bottom: 0.5rem;
+        }
+
+        .prediction-uncertainty {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 1.2rem;
+            font-weight: normal;
+        }
+
+        .prediction-text {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .true-value {
+            color: #FFD700;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        .chart-container {
+            height: 150px;
+        }
+
+        .latent-info {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 1rem;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .latent-values {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .latent-value {
+            background: rgba(102, 126, 234, 0.2);
+            padding: 0.5rem;
+            border-radius: 4px;
+            text-align: center;
+            font-family: monospace;
+        }
+
+
+
+
+
+        .close-help:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .dimension-ranges {
+            margin-top: 0.5rem;
+            font-size: 0.8rem;
+            opacity: 0.8;
+        }
+
+        .dimension-ranges div {
+            margin-bottom: 0.25rem;
+        }
+
+        .footer {
+            position: fixed;
+            bottom: 1rem;
+            right: 1rem;
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .footer p {
+            margin: 0;
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .footer a {
+            color: #667eea;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+
+        .footer a:hover {
+            color: #764ba2;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Minuet Browser</h1>
+        <p>Latent Space Visualization</p>
+    </div>
+
+    <div class="controls">
+        <div class="control-group">
+            <label for="image-type">IMAGE TYPE:</label>
+            <select id="image-type">
+                <option value="original">Original</option>
+                <option value="reconstruction">Reconstruction</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label for="x-axis">X-AXIS:</label>
+            <select id="x-axis">
+                <option value="0">Latent Dim 1</option>
+                <option value="1">Latent Dim 2</option>
+                <option value="2">Latent Dim 3</option>
+                <option value="3">Latent Dim 4</option>
+                <option value="4">Latent Dim 5</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label for="y-axis">Y-AXIS:</label>
+            <select id="y-axis">
+                <option value="0">Latent Dim 1</option>
+                <option value="1" selected>Latent Dim 2</option>
+                <option value="2">Latent Dim 3</option>
+                <option value="3">Latent Dim 4</option>
+                <option value="4">Latent Dim 5</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label for="z-axis">Z-AXIS:</label>
+            <select id="z-axis">
+                <option value="0">Latent Dim 1</option>
+                <option value="1">Latent Dim 2</option>
+                <option value="2">Latent Dim 3</option>
+                <option value="3">Latent Dim 4</option>
+                <option value="4" selected>Latent Dim 5</option>
+            </select>
+        </div>
+    </div>
+
+    <div id="loading" class="loading">
+        <div class="spinner"></div>
+        <p>Loading galaxies...</p>
+    </div>
+
+
+
+    <div id="webgl-container"></div>
+    
+    <div class="footer">
+        <p>© 2025 <a href="https://alexandergagliano.github.io" target="_blank">Alex Gagliano</a></p>
+    </div>
+
+
+
+
+
+    <!-- Modal for galaxy details -->
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Galaxy Details</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div id="modal-body">
+                <!-- Content will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let allGalaxies = [];
+        let filteredGalaxies = [];
+        let scene, camera, renderer, controls;
+        let galaxyPoints = [];
+        let raycaster, mouse;
+        let clock = new THREE.Clock();
+        let frameCount = 0;
+        let lastTime = 0;
+        let selectedDimensions = { x: 0, y: 1, z: 2 };
+
+        // === Mouse interaction state for click vs drag ===
+        let mouseDownPos = null;
+        let mouseUpPos = null;
+        const DRAG_THRESHOLD = 10; // pixels - increased for more forgiving clicks
+
+        // Initialize Three.js scene
+        function initWebGL() {
+            console.log('=== INITIALIZING WEBGL ===');
+            
+            console.log('Getting container element...');
+            const container = document.getElementById('webgl-container');
+            if (!container) {
+                throw new Error('WebGL container element not found');
+            }
+            console.log('Container found:', container);
+            
+            console.log('Creating Three.js scene...');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0f0f23);
+            console.log('Scene created');
+            
+            console.log('Setting up camera...');
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 0, 8); // Start further back to see all data
+            console.log('Camera created and positioned');
+            
+            console.log('Creating WebGL renderer...');
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            console.log('Renderer created, size:', window.innerWidth, 'x', window.innerHeight);
+            
+            console.log('Appending renderer to container...');
+            container.appendChild(renderer.domElement);
+            console.log('Renderer appended to container');
+            
+            console.log('Setting up basic camera controls...');
+            controls = {
+                isMouseDown: false,
+                mouseX: 0,
+                mouseY: 0,
+                rotationX: 0,
+                rotationY: 0,
+                distance: 5,
+                target: new THREE.Vector3(0, 0, 0), // Will be updated based on data centroid
+                
+                update: function() {
+                    // Update camera position based on controls
+                    const x = this.distance * Math.sin(this.rotationY) * Math.cos(this.rotationX);
+                    const y = this.distance * Math.sin(this.rotationX);
+                    const z = this.distance * Math.cos(this.rotationY) * Math.cos(this.rotationX);
+                    
+                    camera.position.set(x, y, z);
+                    camera.lookAt(this.target);
+                    
+                    // Update point sizes based on zoom level
+                    updatePointSizes();
+                },
+                
+                reset: function() {
+                    this.rotationX = 0;
+                    this.rotationY = 0;
+                    this.distance = 8; // Start further back
+                    this.update();
+                }
+            };
+            
+            // Set up mouse event handlers for camera control
+            renderer.domElement.addEventListener('mousedown', (event) => {
+                controls.isMouseDown = true;
+                controls.mouseX = event.clientX;
+                controls.mouseY = event.clientY;
+                mouseDownPos = { x: event.clientX, y: event.clientY };
+            });
+            
+            renderer.domElement.addEventListener('mouseup', (event) => {
+                controls.isMouseDown = false;
+                mouseUpPos = { x: event.clientX, y: event.clientY };
+                
+                // Always re-enable raycaster on mouse up
+                raycaster.enabled = true;
+                
+                // Only trigger click if mouse didn't move much
+                if (mouseDownPos && mouseUpPos &&
+                    Math.abs(mouseDownPos.x - mouseUpPos.x) < DRAG_THRESHOLD &&
+                    Math.abs(mouseDownPos.y - mouseUpPos.y) < DRAG_THRESHOLD) {
+                    onPointClick(event);
+                }
+            });
+            
+            renderer.domElement.addEventListener('mousemove', (event) => {
+                if (controls.isMouseDown) {
+                    const deltaX = event.clientX - controls.mouseX;
+                    const deltaY = event.clientY - controls.mouseY;
+                    
+                    controls.rotationY += deltaX * 0.01;
+                    controls.rotationX += deltaY * 0.01;
+                    
+                    // Clamp vertical rotation
+                    controls.rotationX = Math.max(-Math.PI/2, Math.min(Math.PI/2, controls.rotationX));
+                    
+                    controls.mouseX = event.clientX;
+                    controls.mouseY = event.clientY;
+                    
+                    // Update point sizes when camera moves
+                    updatePointSizes();
+                    
+                    // Disable raycaster during camera movement to prevent accidental clicks
+                    raycaster.enabled = false;
+                } else {
+                    // Re-enable raycaster when not moving camera
+                    raycaster.enabled = true;
+                }
+            });
+            
+            renderer.domElement.addEventListener('wheel', (event) => {
+                controls.distance += event.deltaY * 0.01;
+                controls.distance = Math.max(0.001, Math.min(1000, controls.distance));
+                
+                // Update point sizes based on zoom level
+                updatePointSizes();
+            });
+            
+            console.log('Basic camera controls configured');
+            
+            console.log('Setting up raycaster...');
+            raycaster = new THREE.Raycaster();
+            raycaster.enabled = true;
+            mouse = new THREE.Vector2();
+            
+            console.log('Adding event listeners...');
+            window.addEventListener('resize', onWindowResize);
+            // Remove any direct click event on renderer.domElement for onPointClick
+            document.addEventListener('keydown', onKeyDown);
+            
+            console.log('Starting animation loop...');
+            animate();
+            
+            console.log('=== WEBGL INITIALIZATION COMPLETE ===');
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function onPointClick(event) {
+            // Don't process clicks if raycaster is disabled (during camera movement)
+            if (!raycaster.enabled) {
+                return;
+            }
+            
+            // Calculate mouse position in normalized device coordinates
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            // Update the picking ray with the camera and mouse position
+            raycaster.setFromCamera(mouse, camera);
+            
+            // Calculate objects intersecting the picking ray
+            const intersects = raycaster.intersectObjects(galaxyPoints);
+            
+            if (intersects.length > 0) {
+                const clickedPoint = intersects[0].object;
+                
+                // Handle individual sprites
+                if (clickedPoint.userData.galaxyId) {
+                    showGalaxyDetails(clickedPoint.userData.galaxyId);
+                }
+            }
+        }
+
+        function createGalaxyPoint(galaxy, coords, imageUrl) {
+            // Create a sprite with galaxy image
+            const textureLoader = new THREE.TextureLoader();
+            const texture = textureLoader.load(imageUrl);
+            
+            const spriteMaterial = new THREE.SpriteMaterial({ 
+                map: texture,
+                transparent: true,
+                opacity: 0.9
+            });
+            
+            const sprite = new THREE.Sprite(spriteMaterial);
+            
+            // Calculate dynamic scale based on camera distance
+            const baseScale = 3.0; // Fixed point size
+            const distanceScale = Math.max(0.01, Math.min(10.0, controls.distance / 5.0));
+            const dynamicScale = baseScale * distanceScale;
+            
+            sprite.scale.set(dynamicScale, dynamicScale, 1);
+            sprite.position.set(coords[0], coords[1], coords[2]);
+            
+            // Store galaxy ID for click detection and base scale for updates
+            sprite.userData.galaxyId = galaxy.id;
+            sprite.userData.baseScale = baseScale;
+            
+            return sprite;
+        }
+        
+        function updatePointSizes() {
+            if (!galaxyPoints || galaxyPoints.length === 0) return;
+            
+            const baseScale = 1.0 * 0.1; // Much smaller fixed point size
+            const dynamicScale = baseScale; // Keep images at fixed size
+            
+            // Update individual sprite scales
+            galaxyPoints.forEach(point => {
+                if (point.userData.baseScale !== undefined) {
+                    point.scale.set(dynamicScale, dynamicScale, 1);
+                }
+            });
+            
+            // Update the zoom display
+            const zoomElement = document.getElementById('zoom-level');
+            if (zoomElement) {
+                zoomElement.textContent = `${(1.0 / distanceScale).toFixed(2)}x`;
+            }
+        }
+
+        let isUpdating = false;
+        let eventListenersSetup = false;
+        
+        function updateGalaxyPoints() {
+            console.log('=== UPDATE GALAXY POINTS STARTED ===');
+            
+            if (isUpdating) {
+                console.log('updateGalaxyPoints already running, skipping');
+                return;
+            }
+            
+            isUpdating = true;
+            console.log('updateGalaxyPoints called, isUpdating set to true');
+            
+            try {
+                console.log('Removing existing points...');
+                console.log('Current galaxyPoints count:', galaxyPoints.length);
+                galaxyPoints.forEach(point => scene.remove(point));
+                galaxyPoints = [];
+                console.log('Existing points removed, galaxyPoints array cleared');
+            
+                console.log('Getting selected dimensions...');
+                // Get dimensions from dropdowns if available, otherwise use defaults
+                const xAxisSelect = document.getElementById('x-axis');
+                const yAxisSelect = document.getElementById('y-axis');
+                const zAxisSelect = document.getElementById('z-axis');
+                
+                if (xAxisSelect) selectedDimensions.x = parseInt(xAxisSelect.value);
+                if (yAxisSelect) selectedDimensions.y = parseInt(yAxisSelect.value);
+                if (zAxisSelect) selectedDimensions.z = parseInt(zAxisSelect.value);
+                
+                console.log('Selected dimensions:', selectedDimensions);
+                
+                console.log('Creating 3D coordinates from latent dimensions...');
+                console.log('filteredGalaxies length:', filteredGalaxies.length);
+                const coords = filteredGalaxies.map(g => [
+                    g.latent_coords[selectedDimensions.x],
+                    g.latent_coords[selectedDimensions.y],
+                    g.latent_coords[selectedDimensions.z]
+                ]);
+                console.log('Coordinates created, first few:', coords.slice(0, 3));
+                
+                console.log('Calculating bounds...');
+                // Use reduce instead of spread operator to avoid stack overflow
+                const bounds = coords.reduce((acc, coord) => {
+                    acc.minX = Math.min(acc.minX, coord[0]);
+                    acc.maxX = Math.max(acc.maxX, coord[0]);
+                    acc.minY = Math.min(acc.minY, coord[1]);
+                    acc.maxY = Math.max(acc.maxY, coord[1]);
+                    acc.minZ = Math.min(acc.minZ, coord[2]);
+                    acc.maxZ = Math.max(acc.maxZ, coord[2]);
+                    return acc;
+                }, {
+                    minX: Infinity,
+                    maxX: -Infinity,
+                    minY: Infinity,
+                    maxY: -Infinity,
+                    minZ: Infinity,
+                    maxZ: -Infinity
+                });
+                console.log('Bounds calculated:', bounds);
+                
+                console.log('Normalizing coordinates...');
+                const rangeX = bounds.maxX - bounds.minX;
+                const rangeY = bounds.maxY - bounds.minY;
+                const rangeZ = bounds.maxZ - bounds.minZ;
+                const maxRange = Math.max(rangeX, rangeY, rangeZ);
+                const scale = 8 / maxRange;
+                console.log('Scale calculated:', scale);
+                
+                // Calculate centers for centering data at origin
+                const centerX = (bounds.minX + bounds.maxX) / 2;
+                const centerY = (bounds.minY + bounds.maxY) / 2;
+                const centerZ = (bounds.minZ + bounds.maxZ) / 2;
+                console.log('Data centers:', centerX, centerY, centerZ);
+                
+                // === EFFICIENT RENDERING WITH UNIQUE IMAGES ===
+                // Sample galaxies for performance while maintaining unique images
+                const maxGalaxies = 10000; // Increased for more detailed visualization
+                const galaxiesToShow = filteredGalaxies.length > maxGalaxies 
+                    ? filteredGalaxies.sort(() => 0.5 - Math.random()).slice(0, maxGalaxies)
+                    : filteredGalaxies;
+                console.log('Will show', galaxiesToShow.length, 'galaxies with unique images (sampled from', filteredGalaxies.length, ')');
+                
+                // Create coordinates from the sampled galaxies to ensure proper positioning
+                const sampledCoords = galaxiesToShow.map(g => [
+                    g.latent_coords[selectedDimensions.x],
+                    g.latent_coords[selectedDimensions.y],
+                    g.latent_coords[selectedDimensions.z]
+                ]);
+                
+                // Create individual sprites with unique textures for better visual diversity
+                const baseScale = 1.0 * 0.1; // Much smaller fixed point size
+                const dynamicScale = baseScale; // Keep images at fixed size
+                
+                // Use a shared material template for efficiency
+                const materialTemplate = {
+                    transparent: true,
+                    opacity: 0.9
+                };
+                
+                galaxiesToShow.forEach((galaxy, index) => {
+                    const normalizedCoords = [
+                        (sampledCoords[index][0] - centerX) * scale,
+                        (sampledCoords[index][1] - centerY) * scale,
+                        (sampledCoords[index][2] - centerZ) * scale
+                    ];
+                    
+                    // Create unique texture for each galaxy
+                    // Get selected image type
+            const imageTypeSelect = document.getElementById('image-type');
+            const imageType = imageTypeSelect ? imageTypeSelect.value : 'original';
+            const texture = new THREE.TextureLoader().load(`/api/galaxy/${galaxy.id}/image?type=${imageType}`);
+                    const material = new THREE.SpriteMaterial({ 
+                        map: texture,
+                        ...materialTemplate
+                    });
+                    
+                    const sprite = new THREE.Sprite(material);
+                    sprite.position.set(normalizedCoords[0], normalizedCoords[1], normalizedCoords[2]);
+                    sprite.scale.set(dynamicScale, dynamicScale, 1);
+                    sprite.userData.galaxyId = galaxy.id;
+                    sprite.userData.baseScale = baseScale;
+                    
+                    scene.add(sprite);
+                    galaxyPoints.push(sprite);
+                });
+                
+                console.log('Created', galaxiesToShow.length, 'unique galaxy sprites');
+                
+
+                console.log('=== UPDATE GALAXY POINTS COMPLETE ===');
+                
+            } catch (error) {
+                console.error('=== ERROR IN UPDATE GALAXY POINTS ===');
+                console.error('Error details:', error);
+                console.error('Error stack:', error.stack);
+            } finally {
+                isUpdating = false;
+                console.log('isUpdating set to false');
+            }
+        }
+
+
+
+        function createInstancedGalaxyPoints(bounds, scale) {
+            // Create a shared texture for all galaxies
+            const textureLoader = new THREE.TextureLoader();
+                            // Get selected image type
+                const imageTypeSelect = document.getElementById('image-type');
+                const imageType = imageTypeSelect ? imageTypeSelect.value : 'original';
+                const sharedTexture = textureLoader.load(`/api/galaxy/0/image?type=${imageType}`);
+            
+            // Create instanced mesh for better performance with billboard sprites
+            const geometry = new THREE.PlaneGeometry(0.1, 0.1); // Much smaller base size
+            const material = new THREE.MeshBasicMaterial({
+                map: sharedTexture,
+                transparent: true,
+                opacity: 0.9,
+                side: THREE.DoubleSide
+            });
+            
+            const instancedMesh = new THREE.InstancedMesh(geometry, material, filteredGalaxies.length);
+            const matrix = new THREE.Matrix4();
+            
+            // Create 3D coordinates from selected latent dimensions
+            const coords = filteredGalaxies.map(g => [
+                g.latent_coords[selectedDimensions.x],
+                g.latent_coords[selectedDimensions.y],
+                g.latent_coords[selectedDimensions.z]
+            ]);
+            
+            filteredGalaxies.forEach((galaxy, index) => {
+                const normalizedCoords = [
+                    (coords[index][0] - bounds.minX) * scale - 4,
+                    (coords[index][1] - bounds.minY) * scale - 4,
+                    (coords[index][2] - bounds.minZ) * scale - 4
+                ];
+                
+                const pointSize = 1.0 * 0.1; // Smaller fixed point size
+                matrix.setPosition(normalizedCoords[0], normalizedCoords[1], normalizedCoords[2]);
+                matrix.scale(new THREE.Vector3(pointSize, pointSize, 1));
+                instancedMesh.setMatrixAt(index, matrix);
+                
+                // Store galaxy ID in userData for raycasting
+                instancedMesh.userData.galaxyIds = instancedMesh.userData.galaxyIds || [];
+                instancedMesh.userData.galaxyIds[index] = galaxy.id;
+            });
+            
+            // Make the instanced mesh always face the camera (billboard)
+            instancedMesh.userData.isBillboard = true;
+            
+            scene.add(instancedMesh);
+            galaxyPoints.push(instancedMesh);
+        }
+
+        function onKeyDown(event) {
+            switch(event.key) {
+                case 'r':
+                case 'R':
+                    // Reset camera position
+                    camera.position.set(0, 0, 5);
+                    controls.reset();
+                    break;
+                case 'f':
+                case 'F':
+                    // Fit all points to view
+                    fitToView();
+                    break;
+                case 'h':
+                case 'H':
+                    // Toggle help overlay
+                    toggleHelp();
+                    break;
+            }
+        }
+
+        function fitToView() {
+            if (filteredGalaxies.length === 0) return;
+            
+            // Calculate bounds of all visible points using selected latent dimensions
+            const coords = filteredGalaxies.map(g => [
+                g.latent_coords[selectedDimensions.x],
+                g.latent_coords[selectedDimensions.y],
+                g.latent_coords[selectedDimensions.z]
+            ]);
+            const bounds = {
+                minX: Math.min(...coords.map(c => c[0])),
+                maxX: Math.max(...coords.map(c => c[0])),
+                minY: Math.min(...coords.map(c => c[1])),
+                maxY: Math.max(...coords.map(c => c[1])),
+                minZ: Math.min(...coords.map(c => c[2])),
+                maxZ: Math.max(...coords.map(c => c[2]))
+            };
+            
+            const centerX = (bounds.minX + bounds.maxX) / 2;
+            const centerY = (bounds.minY + bounds.maxY) / 2;
+            const centerZ = (bounds.minZ + bounds.maxZ) / 2;
+            const rangeX = bounds.maxX - bounds.minX;
+            const rangeY = bounds.maxY - bounds.minY;
+            const rangeZ = bounds.maxZ - bounds.minZ;
+            const maxRange = Math.max(rangeX, rangeY, rangeZ);
+            
+            // Position camera to fit all points
+            camera.position.set(centerX, centerY, centerZ + maxRange * 1.5);
+            camera.lookAt(centerX, centerY, centerZ);
+        }
+
+        function toggleHelp() {
+            const helpOverlay = document.getElementById('help-overlay');
+            if (helpOverlay) {
+                helpOverlay.style.display = helpOverlay.style.display === 'none' ? 'block' : 'none';
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Update controls
+            if (controls && controls.update) {
+                controls.update();
+            }
+            
+            // Update billboard sprites to face camera
+            galaxyPoints.forEach(point => {
+                if (point.userData.isBillboard) {
+                    // For instanced meshes, we need to update the rotation to face camera
+                    point.lookAt(camera.position);
+                }
+            });
+            
+            // Render scene
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            } else {
+                console.warn('Missing renderer, scene, or camera for rendering');
+            }
+            
+            // Update FPS counter
+            frameCount++;
+            const currentTime = clock.getElapsedTime();
+            if (currentTime - lastTime >= 1) {
+                const fps = Math.round(frameCount / (currentTime - lastTime));
+                const fpsElement = document.getElementById('fps');
+                if (fpsElement) fpsElement.textContent = fps;
+                frameCount = 0;
+                lastTime = currentTime;
+            }
+            
+            // Update zoom level display
+            if (camera) {
+                const zoomLevel = camera.position.z / 5;
+                const zoomElement = document.getElementById('zoom-level');
+                if (zoomElement) zoomElement.textContent = zoomLevel.toFixed(2);
+            }
+        }
+
+        // Load galaxies on page load
+        window.addEventListener('load', async () => {
+            try {
+                console.log('=== STARTING INITIALIZATION ===');
+                console.log('Step 1: Loading galaxies from API...');
+                const response = await fetch('/api/galaxies');
+                console.log('API response status:', response.status);
+                const data = await response.json();
+                console.log('Galaxies loaded:', data.total_galaxies);
+                console.log('First galaxy data:', data.galaxies[0]);
+                allGalaxies = data.galaxies;
+                filteredGalaxies = [...allGalaxies];
+                console.log('Step 1 complete: Galaxies loaded into memory');
+                
+                // Check if Three.js is available
+                console.log('Step 2: Checking Three.js availability...');
+                if (typeof THREE === 'undefined') {
+                    throw new Error('Three.js not loaded');
+                }
+                console.log('Three.js is available');
+                
+                // Initialize WebGL
+                console.log('Step 3: Initializing WebGL...');
+                initWebGL();
+                console.log('WebGL initialization complete');
+                
+                // Create galaxy points
+                console.log('Step 4: Creating galaxy points...');
+                updateGalaxyPoints();
+                console.log('Galaxy points creation complete');
+                
+                // Setup event listeners
+                console.log('Step 5: Setting up event listeners...');
+                setupEventListeners();
+                console.log('Event listeners setup complete');
+                
+                // Hide loading screen
+                console.log('Step 6: Hiding loading screen...');
+                const loadingElement = document.getElementById('loading');
+                if (loadingElement) {
+                    loadingElement.style.display = 'none';
+                    console.log('Loading screen hidden');
+                } else {
+                    console.warn('Loading element not found');
+                }
+                
+                console.log('=== INITIALIZATION COMPLETE ===');
+            } catch (error) {
+                console.error('=== INITIALIZATION FAILED ===');
+                console.error('Error details:', error);
+                console.error('Error stack:', error.stack);
+                const loadingElement = document.getElementById('loading');
+                if (loadingElement) {
+                    loadingElement.innerHTML = `<p>Error loading galaxies: ${error.message}. Please refresh the page.</p>`;
+                }
+            }
+        });
+
+        // Event listeners for controls - moved inside the load event to ensure DOM elements exist
+        function setupEventListeners() {
+            if (eventListenersSetup) {
+                console.log('Event listeners already set up, skipping');
+                return;
+            }
+            
+            console.log('Setting up event listeners...');
+            
+            // Image type control
+            const imageTypeSelect = document.getElementById('image-type');
+            if (imageTypeSelect) {
+                imageTypeSelect.addEventListener('change', function() {
+                    console.log('Image type changed to:', this.value);
+                    updateGalaxyPoints();
+                });
+            }
+            
+            // X-axis dimension control
+            const xAxisSelect = document.getElementById('x-axis');
+            if (xAxisSelect) {
+                xAxisSelect.addEventListener('change', function() {
+                    selectedDimensions.x = parseInt(this.value);
+                    console.log('X dimension changed to:', selectedDimensions.x);
+                    updateGalaxyPoints();
+                });
+            }
+            
+            // Y-axis dimension control
+            const yAxisSelect = document.getElementById('y-axis');
+            if (yAxisSelect) {
+                yAxisSelect.addEventListener('change', function() {
+                    selectedDimensions.y = parseInt(this.value);
+                    console.log('Y dimension changed to:', selectedDimensions.y);
+                    updateGalaxyPoints();
+                });
+            }
+            
+            // Z-axis dimension control
+            const zAxisSelect = document.getElementById('z-axis');
+            if (zAxisSelect) {
+                zAxisSelect.addEventListener('change', function() {
+                    selectedDimensions.z = parseInt(this.value);
+                    console.log('Z dimension changed to:', selectedDimensions.z);
+                    updateGalaxyPoints();
+                });
+            }
+            
+            eventListenersSetup = true;
+            console.log('Event listeners set up successfully');
+        }
+
+
+
+        // Modal functionality
+        const modal = document.getElementById('modal');
+        const closeBtn = document.querySelector('.close');
+
+        closeBtn.onclick = () => modal.style.display = 'none';
+        window.onclick = (event) => {
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        };
+
+        async function showGalaxyDetails(galaxyId) {
+            const modal = document.getElementById('modal');
+            const modalBody = document.getElementById('modal-body');
+            
+            // Show loading state
+            modalBody.innerHTML = `
+                <div style="text-align: center; padding: 2rem;">
+                    <div class="spinner"></div>
+                    <p>Loading predictions...</p>
+                </div>
+            `;
+            modal.style.display = 'block';
+
+            try {
+                const response = await fetch(`/api/galaxy/${galaxyId}/predictions`);
+                const data = await response.json();
+                
+                modalBody.innerHTML = `
+                    <div class="galaxy-detail">
+                        <div>
+                            <img class="galaxy-image-large" 
+                                 src="/api/galaxy/${galaxyId}/image" 
+                                 alt="Galaxy ${galaxyId}">
+                        </div>
+                        <div class="predictions">
+                            <div class="prediction-item">
+                                <div class="prediction-text">
+                                    <h3>Redshift (z)</h3>
+                                    <div class="prediction-value">${data.predictions.redshift.mean.toFixed(4)} <span class="prediction-uncertainty">±${data.predictions.redshift.std.toFixed(4)}</span></div>
+                                </div>
+                                <div class="chart-container">
+                                    <canvas id="redshift-chart" width="300" height="150"></canvas>
+                                </div>
+                            </div>
+                            
+                            <div class="prediction-item">
+                                <div class="prediction-text">
+                                    <h3>Stellar Mass<br/>(log M*/M☉)</h3>
+                                    <div class="prediction-value">${data.predictions.stellar_mass.mean.toFixed(2)} <span class="prediction-uncertainty">±${data.predictions.stellar_mass.std.toFixed(2)}</span></div>
+                                </div>
+                                <div class="chart-container">
+                                    <canvas id="mass-chart" width="300" height="150"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                // Create histograms for posterior distributions
+                setTimeout(() => {
+                    createHistogram('redshift-chart', data.predictions.redshift.samples, 'Redshift (z)', '#4CAF50');
+                    createHistogram('mass-chart', data.predictions.stellar_mass.samples, 'Stellar Mass (log M*/M☉)', '#FF9800');
+                }, 100);
+            } catch (error) {
+                console.error('Error loading predictions:', error);
+                modalBody.innerHTML = `
+                    <div style="text-align: center; padding: 2rem;">
+                        <p>Error loading predictions. Please try again.</p>
+                    </div>
+                `;
+            }
+        }
+        
+        function createHistogram(canvasId, samples, label, color) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            
+            // Set fixed ranges based on label
+            let min, max;
+            if (label === 'Redshift (z)') {
+                min = 0;
+                max = 1.0;
+            } else if (label === 'Stellar Mass (log M*/M☉)') {
+                min = 7;
+                max = 12;
+            } else {
+                // Fallback to dynamic range for other labels
+                min = Math.min(...samples);
+                max = Math.max(...samples);
+            }
+            
+            const numPoints = 100;
+            const step = (max - min) / numPoints;
+            
+            const xValues = [];
+            const yValues = [];
+            
+            for (let i = 0; i <= numPoints; i++) {
+                const x = min + i * step;
+                xValues.push(x);
+                
+                // Calculate density using kernel density estimation
+                let density = 0;
+                const bandwidth = (max - min) / 20; // Adaptive bandwidth
+                
+                samples.forEach(sample => {
+                    const diff = (x - sample) / bandwidth;
+                    density += Math.exp(-0.5 * diff * diff);
+                });
+                
+                yValues.push(density);
+            }
+            
+            // Normalize to percentage
+            const maxDensity = Math.max(...yValues);
+            const normalizedY = yValues.map(y => (y / maxDensity) * 100);
+            
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: xValues.map(x => x.toFixed(3)),
+                    datasets: [{
+                        label: 'Posterior Density',
+                        data: normalizedY,
+                        borderColor: color,
+                        backgroundColor: color + '20',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: false
+                        },
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: label,
+                                color: 'white'
+                            },
+                            ticks: {
+                                color: 'white',
+                                maxTicksLimit: 8
+                            },
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'PDF',
+                                color: 'white'
+                            },
+                            ticks: {
+                                color: 'white'
+                            },
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html> 
