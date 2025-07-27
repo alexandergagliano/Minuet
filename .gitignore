@@ -33,6 +33,7 @@ data/obsolete
 models/obsolete
 plots/obsolete
 scripts/obsolete
+browser/obsolete
 submit/obsolete
 
 *.zip
